@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CVC5_V: '1.2.1'
+  CVC5_SHA: 'dc565d9'
+  COSMOCC_V: '4.0.2'
+
+jobs:
+  
+  amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        run: |
+          echo $CVC5_SHA > cvc5.sha
+          echo $COSMOCC_V > cosmocc.ver
+          bash build.sh
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvc5-amd64
+          path: cvc5-x86_64
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+
+  arm64:
+    runs-on: mac-mini-m1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        run: |
+          echo $CVC5_SHA > cvc5.sha
+          echo $COSMOCC_V > cosmocc.ver
+          docker run --platform=linux/arm64/v8 --rm -t -v .:/opt/workspace arm64v8/ubuntu bash -c "export DEBIAN_FRONTEND=noninteractive && apt update && apt install sudo wget curl unzip python3-pip cmake clang-format python3.12-venv git m4 yacc -y && cd /opt/workspace && bash build.sh"
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: cvc5-arm64
+          path: cvc5-aarch64
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+
+  universal:
+    needs: [ amd64, arm64 ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+      - name: Link
+        run: |
+          bash link.sh
+      - name: Upload
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_name: sireum/rolling
+          repo_token: ${{ secrets.RELEASE_TOKEN }}
+          file: cvc5.com
+          asset_name: cvc5-${{ env.CVC5_V }}.${{ env.CVC5_SHA }}-cosmocc-${{ env.COSMOCC_V }}.com
+          tag: cvc5
+          overwrite: true
